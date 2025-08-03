@@ -1,4 +1,12 @@
+import java.awt.image.BufferedImage;
+import java.awt.Graphics;
+
 public class EcliPixel {
-    //essa classe vai conter os métodos de processamento de imagem em si
-    //funciona como um 'serviço' acessível de outros lugares do código
+    public static BufferedImage converterParaCinza(BufferedImage imagemOriginal) {
+        BufferedImage cinza = new BufferedImage(imagemOriginal.getWidth(), imagemOriginal.getHeight(), BufferedImage.TYPE_BYTE_GRAY);
+        Graphics g = cinza.getGraphics();
+        g.drawImage(imagemOriginal, 0, 0, null);
+        g.dispose();
+        return cinza;
+    }
 }
