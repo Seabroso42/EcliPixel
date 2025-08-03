@@ -182,3 +182,26 @@ with left_col:
             width, height = 550, 200
             image = np.zeros((height, width, 3), dtype=np.uint8)
             st.image(image, caption="", use_container_width=False)
+ 
+ 
+
+
+uploaded_file = st.file_uploader("Escolha uma imagem", type=["png", "jpg", "jpeg"])
+
+if uploaded_file is not None:
+    st.image(uploaded_file, caption="Imagem enviada", use_column_width=True)
+
+    if st.button("Enviar para processamento"):
+        import requests
+        files = {"image": uploaded_file.getvalue()}
+        response = requests.post("http://localhost:8080/processar", files=files)
+
+        if response.status_code == 200:
+            st.success("Imagem processada com sucesso!")
+            # Exibir resultado (se for imagem binária, por exemplo)
+            import io
+            import PIL.Image
+            img = PIL.Image.open(io.BytesIO(response.content))
+            st.image(img, caption="Resultado do processamento", use_column_width=True)
+        else:
+            st.error(f"Erro ao processar imagem: {response.text}")
