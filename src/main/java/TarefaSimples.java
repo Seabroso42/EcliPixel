@@ -1,18 +1,34 @@
 import java.awt.image.BufferedImage;
+import java.util.List;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
+import java.awt.Color;
 
-public abstract class TarefaSimples implements Runnable {
-    protected BufferedImage imagem;
+public class TarefaSimples implements Runnable {
+    private final BufferedImage entrada;
+    private final BufferedImage saida;
+    private final int yInicial, yFinal, limiar;
 
-    public TarefaSimples(BufferedImage imagem) {
-        this.imagem = imagem;
+    public TarefaSimples(BufferedImage entrada, BufferedImage saida, int yInicial, int yFinal, int limiar) {
+        this.entrada = entrada;
+        this.saida = saida;
+        this.yInicial = yInicial;
+        this.yFinal = yFinal;
+        this.limiar = limiar;
     }
-
-    public abstract BufferedImage processar();
 
     @Override
     public void run() {
-        BufferedImage resultado = processar();
-        PixelCorreio.salvarImagem(resultado, "output_" + Thread.currentThread().getId() + ".png");
-        System.out.println("Imagem processada na thread " + Thread.currentThread().getName());
+        for (int y = yInicial; y < yFinal; y++) {
+            for (int x = 0; x < entrada.getWidth(); x++) {
+                int rgb = entrada.getRGB(x, y);
+                int r = (rgb >> 16) & 0xFF;
+                int g = (rgb >> 8) & 0xFF;
+                int b = rgb & 0xFF;
+                int gray = (r + g + b) / 3;
+                int binarizado = (gray < limiar) ? 0x000000 : 0xFFFFFF;
+                saida.setRGB(x, y, binarizado);
+            }
+        }
     }
 }

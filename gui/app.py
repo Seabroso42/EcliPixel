@@ -2,9 +2,9 @@ import os
 import streamlit as st
 import numpy as np
 import cv2
-import io
+from io import BytesIO
 from PIL import Image
-
+import requests
 
 st.markdown(
     """
@@ -49,6 +49,8 @@ with left_col:
     image = np.zeros((square_size, square_size, 3), dtype=np.uint8)
     image[:, :] = [69, 69, 69]
 
+    uploaded_file = st.file_uploader("Escolha uma imagem", type=["png", "jpeg", "jpg"], label_visibility="collapsed", key="file_uploader")
+
     # Load the overlay image (ensure it has alpha channel)
     overlay_path = "assets/Add Image.png"
     overlay = cv2.imread(overlay_path, cv2.IMREAD_UNCHANGED)
@@ -73,7 +75,11 @@ with left_col:
         else:
             image[y_offset:y_offset+overlay_resized.shape[0], x_offset:x_offset+overlay_resized.shape[1], :] = overlay_resized[:, :, :3]
 
-    st.image(image, caption="")
+    if uploaded_file is not None:
+        st.image(uploaded_file, caption="Imagem original", use_column_width=True)
+    else:
+        st.image(image, caption="", use_column_width=True)
+
     
     col1, col2 = st.columns([0.5, 1])
     with col1:
@@ -111,7 +117,6 @@ with left_col:
                 return bg
 
             st.image(overlay_centered(square_size, "assets/Group 17.png"), use_container_width=False) 
-            st.image(overlay_centered(square_size, "assets/Group 22.png"), use_container_width=False)
 
         with col1b:
             st.markdown(
@@ -128,13 +133,12 @@ with left_col:
                 }
                 </style>
                 <button class="square-btn" onclick="window.dispatchEvent(new Event('multithread '));">Multithread/Simples</button>
-                <button class="square-btn" onclick="window.dispatchEvent(new Event('group_22'));">Carregar Script Externo 22</button>
                 """,
                 unsafe_allow_html=True
             )
 
     with col2:
-        width, height = 400, 200
+        width, height = 420, 100
         image = np.zeros((height, width, 3), dtype=np.uint8)
         image[:, :] = [255, 255, 255]
         st.image(image, caption="")
@@ -142,63 +146,25 @@ with left_col:
     with right_col:
         st.title("Visualizador de resultados")
 
-        uploaded_file = st.file_uploader("Escolha uma imagem",type=["png", "jpeg", "jpg"],label_visibility="collapsed",key="file_uploader")
+    if uploaded_file is not None:
+        col1, col2 = st.columns(2)
 
-        if uploaded_file is not None:
-            col_um, col_dois = st.columns([1, 1])
-            with col_um:
+        with col1:
+            if st.button("Binarizar"):
+                files = {"file": uploaded_file.getvalue()}
+                response = requests.post("http://localhost:8080/binarizar", files=files)
+                if response.status_code == 200:
+                    img = Image.open(BytesIO(response.content))
+                    st.image(img, caption="Imagem binarizada")
+                else:
+                    st.error("Erro na binarização")
 
-                st.title("Binarização da imagem")
-                ###A partir daqui, substituir por implementação em java
-                def binarize_image(uploaded_file):
-                    # Read image from uploaded file
-                    image = Image.open(uploaded_file).convert("L")  # Convert to grayscale
-                    arr = np.array(image)
-                    # Simple thresholding
-                    _, binary = cv2.threshold(arr, 127, 255, cv2.THRESH_BINARY)
-                    # Convert back to PIL Image
-                    bin_img = Image.fromarray(binary)
-                    return bin_img
-                
-                bin_img = binarize_image(uploaded_file)
-                # Show binarized image
-                st.image(bin_img, caption="Imagem Binarizada")
-
-                # Prepare image for download
-                buf = io.BytesIO()
-                bin_img.save(buf, format="PNG")
-                byte_im = buf.getvalue()
-                st.download_button(
-                    label="Baixar imagem binarizada",
-                    data=byte_im,
-                    file_name="binarizada.png",
-                    mime="image/png"
-                )
-            with col_dois:
-                st.title("Histograma da imagem")
-                def plot_histogram(image_pil):
-                    arr = np.array(image_pil)
-                    hist = cv2.calcHist([arr], [0], None, [256], [0,256])
-                    hist_img = np.full((200, 256, 3), 255, dtype=np.uint8)
-                    cv2.normalize(hist, hist, 0, 200, cv2.NORM_MINMAX)
-                    for x, y in enumerate(hist):
-                        cv2.line(hist_img, (x, 200), (x, 200-int(y)), (0,0,0), 1)
-                    hist_img = cv2.cvtColor(hist_img, cv2.COLOR_BGR2RGB)
-                    return Image.fromarray(hist_img)
-
-                hist_img = plot_histogram(Image.open(uploaded_file))
-                st.image(hist_img, caption="Histograma da Imagem Binarizada")
-
-                buf_hist = io.BytesIO()
-                hist_img.save(buf_hist, format="PNG")
-                byte_hist = buf_hist.getvalue()
-                st.download_button(
-                    label="Baixar histograma",
-                    data=byte_hist,
-                    file_name="histograma.png",
-                    mime="image/png"
-                )
-
-
-       
-
+        with col2:
+            if st.button("Ver histograma"):
+                files = {"file": uploaded_file.getvalue()}
+                response = requests.post("http://localhost:8080/histograma", files=files)
+                if response.status_code == 200:
+                    hist_data = response.json()
+                    st.bar_chart(hist_data)
+                else:
+                    st.error("Erro ao obter histograma")
