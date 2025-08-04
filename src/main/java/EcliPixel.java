@@ -1,38 +1,22 @@
 import enums.CanalCor;
 import enums.Thresh;
-import exceptions.FalhaAoCarregarImagem;
 import org.bytedeco.javacpp.FloatPointer;
 import org.bytedeco.javacpp.IntPointer;
 import org.bytedeco.opencv.opencv_core.Mat;
 import org.bytedeco.opencv.opencv_core.MatVector;
 import org.bytedeco.opencv.opencv_core.Rect;
 import org.bytedeco.opencv.opencv_core.Size;
-
-import java.io.IOException;
-import java.net.URL;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-
 import static enums.Thresh.GLOBAL;
 import static enums.Thresh.LOCAL_MEDIA;
 import static org.bytedeco.opencv.global.opencv_core.split;
-import static org.bytedeco.opencv.global.opencv_imgcodecs.*;
 import static org.bytedeco.opencv.global.opencv_imgproc.*;
 
-/**
- * Classe de serviço stateless com métodos utilitários estáticos
- * para processamento de imagens usando OpenCV.
- */
 public final class EcliPixel {
 
-    // Construtor privado para impedir que a classe seja instanciada.
     private EcliPixel() {}
-
-    // --- MÉTODOS DE PROCESSAMENTO DE IMAGEM ---
 
     public static Mat aplicarGaussian(Mat imagemEntrada, int kernelSize) {
         if (imagemEntrada.empty() || kernelSize <= 0 || kernelSize % 2 == 0) {
@@ -44,9 +28,6 @@ public final class EcliPixel {
     }
 
     public static Mat converterCanalCores(Mat imagemEntrada, CanalCor canal) {
-        if (imagemEntrada == null || imagemEntrada.empty()) {
-            throw new IllegalArgumentException("A imagem de entrada não pode ser nula ou vazia.");
-        }
         Mat imagemConvertida = new Mat();
         int escolha = switch (canal) {
             case HSV -> COLOR_BGR2HSV;
@@ -59,9 +40,6 @@ public final class EcliPixel {
     }
 
     public static Mat binarizar(Mat imagemEntrada, Thresh metodo, Object... binparams) {
-        if (imagemEntrada.empty()) {
-            throw new IllegalArgumentException("A imagem de entrada para binarizar não pode ser vazia.");
-        }
         Mat imagemBinaria = new Mat();
         Mat imagemCinza = (imagemEntrada.channels() == 3) ? converterCanalCores(imagemEntrada, CanalCor.GRAYSCALE) : imagemEntrada;
 
@@ -83,36 +61,6 @@ public final class EcliPixel {
             default -> throw new UnsupportedOperationException("Tipo de binarização não implementado: " + metodo);
         }
         return imagemBinaria;
-    }
-
-    public static Mat isolarCanal(Mat imagemEntrada, int canalEscolhido) {
-        if (imagemEntrada.empty() || imagemEntrada.channels() < 3) {
-            throw new IllegalArgumentException("A imagem de entrada deve ser colorida (3 canais) para isolar um canal.");
-        }
-        if (canalEscolhido < 1 || canalEscolhido > 3) {
-            throw new IllegalArgumentException("O canal escolhido deve ser 1, 2 ou 3.");
-        }
-        MatVector canais = new MatVector();
-        split(imagemEntrada, canais);
-        // Retorna uma cópia para evitar problemas de referência com o MatVector
-        return new Mat(canais.get(canalEscolhido - 1));
-    }
-
-    public static Mat calcularHistograma(Mat imagemEntrada) {
-        if (imagemEntrada.empty()) {
-            throw new IllegalArgumentException("A imagem de entrada para o histograma não pode ser vazia.");
-        }
-        Mat imagemCinza = (imagemEntrada.channels() == 3) ? converterCanalCores(imagemEntrada, CanalCor.GRAYSCALE) : imagemEntrada;
-
-        MatVector listaDeImagens = new MatVector(imagemCinza);
-        Mat histograma = new Mat();
-        Mat mascara = new Mat();
-        IntPointer canais = new IntPointer(0);
-        IntPointer tamanhoHist = new IntPointer(256);
-        FloatPointer faixas = new FloatPointer(0f, 256f);
-
-        calcHist(listaDeImagens, canais, mascara, histograma, tamanhoHist, faixas, true);
-        return histograma;
     }
 
     public static Mat binarizarParalelo(Mat imagemEntrada, Thresh metodo, Object... binparams) {
@@ -141,10 +89,21 @@ public final class EcliPixel {
 
         executor.shutdown();
         try {
-            executor.awaitTermination(5, TimeUnit.MINUTES);
+            if (!executor.awaitTermination(5, TimeUnit.MINUTES)) {
+                executor.shutdownNow();
+            }
         } catch (InterruptedException e) {
+            executor.shutdownNow();
             Thread.currentThread().interrupt();
         }
         return imagemBinarizada;
+    }
+
+    public static Mat calcularHistograma(Mat imagemEntrada) {
+        Mat imagemCinza = (imagemEntrada.channels() == 3) ? converterCanalCores(imagemEntrada, CanalCor.GRAYSCALE) : imagemEntrada;
+        MatVector listaDeImagens = new MatVector(imagemCinza);
+        Mat histograma = new Mat();
+        calcHist(listaDeImagens, new IntPointer(0), new Mat(), histograma, new IntPointer(256), new FloatPointer(0f, 256f), true);
+        return histograma;
     }
 }

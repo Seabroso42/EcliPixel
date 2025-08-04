@@ -1,7 +1,7 @@
 import enums.Thresh;
 import fi.iki.elonen.NanoHTTPD;
+import org.bytedeco.javacpp.indexer.FloatIndexer;
 import org.bytedeco.opencv.opencv_core.Mat;
-
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -9,16 +9,11 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.HashMap;
 import java.util.Map;
-
+import java.util.function.Function;
 import static org.bytedeco.opencv.global.opencv_imgcodecs.imencode;
 
-/**
- * A Camada de API. Expõe a funcionalidade de processamento de imagem
- * via requisições HTTP.
- */
 public class Servidor extends NanoHTTPD {
 
-    // O servidor "possui" o mestre para delegar tarefas em lote.
     private final PixelMestre mestre = new PixelMestre();
 
     public Servidor() throws IOException {
@@ -28,16 +23,24 @@ public class Servidor extends NanoHTTPD {
     }
 
     @Override
+    public void stop() {
+        super.stop();
+        mestre.desligar();
+    }
+
+    @Override
     public Response serve(IHTTPSession session) {
         String uri = session.getUri();
         Method method = session.getMethod();
-
         try {
             if (Method.POST.equals(method) && "/processar-agora".equals(uri)) {
                 return processarImagemUnicaSincrono(session);
             }
             if (Method.POST.equals(method) && "/iniciar-lote".equals(uri)) {
                 return iniciarProcessamentoEmLoteAssincrono(session);
+            }
+            if (Method.POST.equals(method) && "/histograma-dados".equals(uri)) {
+                return processarHistogramaDados(session);
             }
         } catch (Exception e) {
             e.printStackTrace();
@@ -46,63 +49,67 @@ public class Servidor extends NanoHTTPD {
         return newFixedLengthResponse(Response.Status.NOT_FOUND, "text/plain", "Endpoint não encontrado.");
     }
 
-    /**
-     * Lida com requisições rápidas e síncronas. O cliente envia uma imagem
-     * e recebe a imagem processada de volta imediatamente.
-     */
     private Response processarImagemUnicaSincrono(IHTTPSession session) throws IOException, ResponseException {
         Map<String, String> files = new HashMap<>();
-        // O NanoHTTPD salva o corpo do POST em um arquivo temporário
         session.parseBody(files);
         String tempFilePathStr = files.get("imagem");
-
         if (tempFilePathStr == null) {
-            return newFixedLengthResponse(Response.Status.BAD_REQUEST, "text/plain", "Campo 'imagem' não encontrado no formulário de upload.");
+            return newFixedLengthResponse(Response.Status.BAD_REQUEST, "text/plain", "Campo 'imagem' não encontrado.");
         }
 
         Path tempPath = Paths.get(tempFilePathStr);
         try {
-            // Usa o Correio para ler a imagem
-            Mat imagemOriginal = PixelCorreio.lerImagem(tempPath.toString());
-
-            // Usa o Serviço diretamente para o processamento
+            Mat imagemOriginal = PixelCorreio.lerImagem(tempPath);
             Mat imagemProcessada = EcliPixel.binarizar(imagemOriginal, Thresh.OTSU);
-
-            // Codifica o resultado para PNG em memória
             byte[] buffer = new byte[(int) (imagemProcessada.total() * imagemProcessada.channels() * 2)];
             imencode(".png", imagemProcessada, buffer);
-
-            // Retorna a imagem processada na resposta
             return newChunkedResponse(Response.Status.OK, "image/png", new ByteArrayInputStream(buffer));
-
         } finally {
-            // É uma boa prática limpar o arquivo temporário criado pelo NanoHTTPD
             Files.deleteIfExists(tempPath);
         }
     }
 
-    /**
-     * Lida com requisições longas e assíncronas. Dispara um trabalho em lote
-     * e retorna uma resposta imediata para o cliente.
-     */
     private Response iniciarProcessamentoEmLoteAssincrono(IHTTPSession session) {
         Map<String, String> params = session.getParms();
         String pastaEntrada = params.get("entrada");
         String pastaSaida = params.get("saida");
-
         if (pastaEntrada == null || pastaSaida == null) {
-            return newFixedLengthResponse(Response.Status.BAD_REQUEST, "text/plain", "Parâmetros de URL 'entrada' e 'saida' são obrigatórios.");
+            return newFixedLengthResponse(Response.Status.BAD_REQUEST, "text/plain", "Parâmetros 'entrada' e 'saida' são obrigatórios.");
         }
 
-        // DELEGA o trabalho pesado para o Mestre em uma nova thread,
-        // para que a requisição HTTP possa retornar imediatamente.
-        new Thread(() -> {
-            mestre.executarBinarizacaoOtimizadaEmLote(pastaEntrada, pastaSaida);
-        }).start();
+        Function<Mat, Mat> pipelineOtimizado = (imagem) -> {
+            if (imagem.cols() > 2000) {
+                return EcliPixel.binarizarParalelo(imagem, Thresh.OTSU);
+            } else {
+                return EcliPixel.binarizar(imagem, Thresh.OTSU);
+            }
+        };
 
-        // Retorna a resposta 202 Accepted, significando "Seu pedido foi aceito e está sendo processado".
+        new Thread(() -> mestre.executarEmLote(pastaEntrada, pastaSaida, pipelineOtimizado)).start();
+
         String mensagem = "Processamento em lote iniciado. Entrada: " + pastaEntrada + ", Saída: " + pastaSaida;
         return newFixedLengthResponse(Response.Status.ACCEPTED, "text/plain", mensagem);
+    }
+
+    private Response processarHistogramaDados(IHTTPSession session) throws IOException, ResponseException {
+        Map<String, String> files = new HashMap<>();
+        session.parseBody(files);
+        String tempFilePathStr = files.get("imagem");
+        Path tempPath = Paths.get(tempFilePathStr);
+
+        try {
+            Mat imagemOriginal = PixelCorreio.lerImagem(tempPath);
+            Mat histogramaMat = EcliPixel.calcularHistograma(imagemOriginal);
+
+            StringBuilder csv = new StringBuilder("nivel,pixels\n");
+            FloatIndexer indexer = histogramaMat.createIndexer();
+            for (int i = 0; i < histogramaMat.rows(); i++) {
+                csv.append(i).append(",").append((int) indexer.get(i)).append("\n");
+            }
+            return newFixedLengthResponse(Response.Status.OK, "text/csv", csv.toString());
+        } finally {
+            Files.deleteIfExists(tempPath);
+        }
     }
 
     public static void main(String[] args) {
