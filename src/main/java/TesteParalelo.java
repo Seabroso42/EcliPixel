@@ -1,76 +1,63 @@
 import enums.Thresh;
 import org.bytedeco.opencv.opencv_core.Mat;
+import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.concurrent.TimeUnit;
-import java.util.function.Function;
+import java.util.function.Consumer;
 
 public class TesteParalelo {
 
     public static void main(String[] args) {
         System.out.println("--- INICIANDO TESTES PARALELOS COM PIXELMESTRE ---");
 
-        // Inicia o cronômetro para a execução total
         long tempoTotalInicio = System.nanoTime();
 
         String pastaDeEntrada;
         try {
             pastaDeEntrada = Paths.get(TesteParalelo.class.getClassLoader().getResource("input").toURI()).toString();
         } catch (Exception e) {
-            System.err.println("Não foi possível encontrar a pasta 'input' nos resources. Verifique a estrutura do projeto.");
-            e.printStackTrace();
+            System.err.println("Não foi possível encontrar a pasta 'input' nos resources.");
             return;
         }
 
-        // --- TESTE 1: Pipeline de Binarização Otimizada em Lote ---
+        for (Thresh metodoDeTeste : Thresh.values()) {
 
-        System.out.println("\n=======================================================");
-        System.out.println("=== INICIANDO LOTE 1: BINARIZAÇÃO OTIMIZADA ===");
-        System.out.println("=======================================================");
+            System.out.println("\n=======================================================");
+            System.out.println("=== INICIANDO LOTE PARA: " + metodoDeTeste.name() + " ===");
 
-        long tempoLote1Inicio = System.nanoTime();
+            long tempoLoteInicio = System.nanoTime();
+            String pastaSaida = "output/teste_paralelo_binarizacao";
+            PixelMestre mestre = new PixelMestre();
 
-        String pastaSaidaBinarizacao = "output/teste_paralelo_binarizacao";
-        PixelMestre mestreBinarizacao = new PixelMestre();
+            // AÇÃO COMPLETA: O teste define exatamente o que fazer, incluindo como nomear o arquivo.
+            Consumer<Path> acaoDeTeste = (caminhoDaImagem) -> {
+                Mat imagem = PixelCorreio.lerImagem(caminhoDaImagem);
 
-        Function<Mat, Mat> pipelineBinarizacao = (imagem) -> {
-            if (imagem.cols() > 1500) {
-                return EcliPixel.binarizarParalelo(imagem, Thresh.OTSU);
-            } else {
-                return EcliPixel.binarizar(imagem, Thresh.OTSU);
-            }
-        };
+                Mat imagemProcessada = switch (metodoDeTeste) {
+                    case OTSU -> EcliPixel.binarizar(imagem, Thresh.OTSU);
+                    case GLOBAL -> EcliPixel.binarizar(imagem, Thresh.GLOBAL, 127.0);
+                    case GLOBAL_INV -> EcliPixel.binarizar(imagem, Thresh.GLOBAL_INV, 127.0);
+                    case LOCAL_MEDIA -> EcliPixel.binarizar(imagem, Thresh.LOCAL_MEDIA, 11, 2.0);
+                    case LOCAL_GAUSSIANA -> EcliPixel.binarizar(imagem, Thresh.LOCAL_GAUSSIANA, 11, 2.0);
+                };
 
-        mestreBinarizacao.executarEmLote(pastaDeEntrada, pastaSaidaBinarizacao, pipelineBinarizacao);
+                String nomeSaida = metodoDeTeste.name() + "_" + caminhoDaImagem.getFileName().toString();
+                Path caminhoFinal = Paths.get(pastaSaida).resolve(nomeSaida);
+                PixelCorreio.salvarImagem(caminhoFinal, imagemProcessada);
 
-        long duracaoLote1Ms = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - tempoLote1Inicio);
-        System.out.println("Tempo de execução do Lote 1: " + duracaoLote1Ms + " ms");
+                imagem.close();
+                imagemProcessada.close();
+            };
 
-        // --- TESTE 2: Pipeline de Efeitos (Gaussian + Canal Vermelho) em Lote ---
+            mestre.executarEmLote(pastaDeEntrada, acaoDeTeste);
 
-        System.out.println("\n=======================================================");
-        System.out.println("=== INICIANDO LOTE 2: EFEITOS (GAUSSIAN + CANAL VERMELHO) ===");
-        System.out.println("=======================================================");
-
-        long tempoLote2Inicio = System.nanoTime();
-
-        String pastaSaidaEfeitos = "output/teste_paralelo_efeitos";
-        PixelMestre mestreEfeitos = new PixelMestre();
-
-        Function<Mat, Mat> pipelineEfeitos = (imagem) -> {
-            Mat imagemComBlur = EcliPixel.aplicarGaussian(imagem, 21);
-            Mat canalVermelho = EcliPixel.isolarCanal(imagemComBlur, 3);
-            imagemComBlur.close();
-            return canalVermelho;
-        };
-
-        mestreEfeitos.executarEmLote(pastaDeEntrada, pastaSaidaEfeitos, pipelineEfeitos);
-
-        long duracaoLote2Ms = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - tempoLote2Inicio);
-        System.out.println("Tempo de execução do Lote 2: " + duracaoLote2Ms + " ms");
+            long duracaoLoteMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - tempoLoteInicio);
+            System.out.println("Tempo de execução do Lote [" + metodoDeTeste.name() + "]: " + duracaoLoteMs + " ms");
+        }
 
         long duracaoTotalMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - tempoTotalInicio);
         System.out.println("\n=======================================================");
-        System.out.println("TODOS OS LOTES PARALELOS FORAM CONCLUÍDOS!");
+        System.out.println("TODOS OS LOTES DE BINARIZAÇÃO FORAM CONCLUÍDOS!");
         System.out.println("Tempo total de execução de todos os testes: " + duracaoTotalMs + " ms (" + duracaoTotalMs / 1000.0 + " segundos)");
     }
 }

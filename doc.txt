@@ -1,0 +1,83 @@
+==================================================
+ PROJETO ECLIPixel - DOCUMENTAÇÃO TÉCNICA
+==================================================
+Última Atualização: 4 de Agosto de 2025
+
+
+1. VISÃO GERAL DO PROJETO
+--------------------------
+O EcliPixel é um backend de processamento de imagem de alta performance, escrito em Java. Ele utiliza a biblioteca JavaCV (um wrapper para a poderosa OpenCV) para executar algoritmos de visão computacional de forma rápida e eficiente.
+
+O sistema foi projetado com foco em paralelismo e separação de responsabilidades, permitindo tanto o processamento em lote de múltiplas imagens quanto a aceleração de operações em uma única imagem de alta resolução.
+
+O projeto pode ser executado como uma ferramenta de linha de comando para testes ou como um servidor web que expõe sua funcionalidade através de uma API HTTP.
+
+
+2. ARQUITETURA
+----------------
+O projeto segue uma arquitetura em camadas (3-Tier) para garantir que cada parte do sistema tenha uma responsabilidade única, tornando o código mais limpo, testável e fácil de manter.
+
+O fluxo de controle é o seguinte:
+
+[Cliente (Teste ou API)] -> [Camada de Controle e I/O] -> [Camada de Orquestração] -> [Camada de Serviço]
+
+  - Camada de Controle/I-O: `PixelCorreio`, `Servidor`
+  - Camada de Orquestração: `PixelMestre`
+  - Camada de Serviço (Motor): `EcliPixel`
+
+
+3. DESCRIÇÃO DAS CLASSES PRINCIPAIS
+------------------------------------
+
+*** A. EcliPixel.java (O Motor de Processamento) ***
+
+Esta é a classe mais importante. É um serviço 100% stateless (não armazena estado) que contém a lógica pura de todos os algoritmos de processamento. Ela apenas recebe uma imagem (`Mat`), processa e retorna uma nova imagem (`Mat`). Todos os seus métodos são `static`.
+
+* MÉTODOS PÚBLICOS:
+  - `aplicarGaussian(Mat, int)`: Aplica um filtro de desfoque Gaussiano.
+  - `converterCanalCores(Mat, CanalCor)`: Converte a imagem para outros espaços de cor (HSV, GRAYSCALE, etc.).
+  - `binarizar(Mat, Thresh, ...)`: Converte uma imagem para preto e branco usando vários métodos (Otsu, Global, Adaptativo).
+  - `binarizarParalelo(Mat, Thresh, ...)`: Versão otimizada que binariza uma única imagem grande em paralelo, "fatiando-a" e processando cada fatia em uma thread.
+  - `isolarCanal(Mat, int)`: Extrai um único canal de uma imagem colorida (ex: o canal Vermelho de uma imagem BGR).
+  - `calcularHistograma(Mat)`: Calcula o histograma de uma imagem em tons de cinza, retornando os dados brutos em um `Mat`.
+  - `segmentarHSV(Mat, Scalar, Scalar, boolean)`: Isola pixels que estão dentro de um intervalo de cor HSV. É a função mais avançada e flexível.
+
+
+*** B. PixelCorreio.java (O Especialista em Arquivos) ***
+
+Classe utilitária stateless responsável EXCLUSIVAMENTE por interagir com o sistema de arquivos.
+
+* MÉTODOS PÚBLICOS:
+  - `lerImagem(Path)`: Lê uma imagem de um caminho no disco e a retorna como um `Mat`.
+  - `lerImagemDeRecurso(String)`: Lê uma imagem da pasta `resources` do projeto.
+  - `salvarImagem(Path, Mat)`: Salva um `Mat` em um arquivo no disco.
+  - `listarImagens(Path)`: Retorna uma lista de todos os arquivos de imagem em uma pasta.
+
+
+*** C. PixelMestre.java (O Orquestrador de Tarefas) ***
+
+O cérebro da concorrência. Ele gerencia um pool de threads para executar trabalhos pesados em paralelo.
+
+* MÉTODOS PÚBLICOS:
+  - `PixelMestre()`: Construtor que inicia o pool de threads com base nos núcleos da CPU.
+  - `executarEmLote(String, String, Function)`: Orquestra o processamento de um lote de imagens. Ele usa o `PixelCorreio` para listar os arquivos e distribui o processamento de cada imagem para uma thread do seu pool.
+  - `desligar()`: Encerra o pool de threads de forma segura.
+
+
+*** D. Servidor.java (A Porta de Entrada - API) ***
+
+Uma classe opcional que expõe a funcionalidade do sistema através de uma API web simples.
+
+* MÉTODOS PRINCIPAIS:
+  - `serve(IHTTPSession)`: O roteador principal. Direciona as requisições para os métodos corretos.
+  - `/processar-agora` (síncrono): Recebe UMA imagem, chama `EcliPixel` diretamente, e retorna a imagem processada na hora.
+  - `/iniciar-lote` (assíncrono): Recebe os nomes das pastas, chama o `PixelMestre` para iniciar um trabalho em segundo plano, e retorna uma resposta "202 Accepted" imediatamente.
+
+
+4. ESTRUTURA DE PASTAS
+------------------------
+O projeto segue a estrutura padrão do Maven:
+- `src/main/java/`: Contém todo o código-fonte Java.
+- `src/main/resources/input/`: Pasta para colocar as imagens de entrada para os testes.
+- `output/`: Pasta na raiz do projeto onde os resultados dos testes são salvos.
+
