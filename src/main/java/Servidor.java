@@ -95,4 +95,13 @@ public class Servidor extends NanoHTTPD {
             return newFixedLengthResponse(Response.Status.INTERNAL_ERROR, MIME_TEXTO_SIMPLES, "Erro ao processar a imagem: " + e.getMessage());
         }
     }
+    
+    public static void main(String[] args) {
+        try {
+            new Servidor(); 
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+}
+
 }
