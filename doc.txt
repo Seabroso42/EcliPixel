@@ -1,5 +1,5 @@
 ==================================================
- PROJETO ECLIPixel - DOCUMENTAÇÃO TÉCNICA
+ PROJETO ECLIPixel - DOCUMENTAÇÃO TÉCNICA FINAL
 ==================================================
 Última Atualização: 4 de Agosto de 2025
 
@@ -8,76 +8,88 @@
 --------------------------
 O EcliPixel é um backend de processamento de imagem de alta performance, escrito em Java. Ele utiliza a biblioteca JavaCV (um wrapper para a poderosa OpenCV) para executar algoritmos de visão computacional de forma rápida e eficiente.
 
-O sistema foi projetado com foco em paralelismo e separação de responsabilidades, permitindo tanto o processamento em lote de múltiplas imagens quanto a aceleração de operações em uma única imagem de alta resolução.
+O sistema foi projetado com foco em performance e processamento paralelo, utilizando uma arquitetura em camadas que promove a separação de responsabilidades, facilitando a manutenção e a expansão.
 
-O projeto pode ser executado como uma ferramenta de linha de comando para testes ou como um servidor web que expõe sua funcionalidade através de uma API HTTP.
+O projeto pode ser utilizado através de scripts de teste para processamento em lote ou como um servidor web que expõe sua funcionalidade através de uma API HTTP.
 
 
 2. ARQUITETURA
 ----------------
-O projeto segue uma arquitetura em camadas (3-Tier) para garantir que cada parte do sistema tenha uma responsabilidade única, tornando o código mais limpo, testável e fácil de manter.
+O projeto segue uma arquitetura em camadas (3-Tier) limpa e desacoplada.
 
 O fluxo de controle é o seguinte:
 
-[Cliente (Teste ou API)] -> [Camada de Controle e I/O] -> [Camada de Orquestração] -> [Camada de Serviço]
+[CLIENTE (Teste ou API)] -> [CAMADA DE CONTROLE/I-O] -> [CAMADA DE ORQUESTRAÇÃO] -> [CAMADA DE SERVIÇO]
 
-  - Camada de Controle/I-O: `PixelCorreio`, `Servidor`
-  - Camada de Orquestração: `PixelMestre`
-  - Camada de Serviço (Motor): `EcliPixel`
+  - Camada de I/O: `PixelCorreio.java`
+    - Responsável por toda a interação com o sistema de arquivos (ler, listar, salvar).
 
+  - Camada de Serviço (Motor): `EcliPixel.java`
+    - Contém a lógica pura de todos os algoritmos de processamento. É 100% stateless (não armazena estado), o que garante a segurança em ambientes com múltiplas threads.
 
-3. DESCRIÇÃO DAS CLASSES PRINCIPAIS
-------------------------------------
+  - Camada de Orquestração: `PixelMestre.java`
+    - O "cérebro" da concorrência. Gerencia um pool de threads para executar trabalhos pesados em paralelo (processamento em lote). Contém a lógica de negócio de alto nível.
 
-*** A. EcliPixel.java (O Motor de Processamento) ***
-
-Esta é a classe mais importante. É um serviço 100% stateless (não armazena estado) que contém a lógica pura de todos os algoritmos de processamento. Ela apenas recebe uma imagem (`Mat`), processa e retorna uma nova imagem (`Mat`). Todos os seus métodos são `static`.
-
-* MÉTODOS PÚBLICOS:
-  - `aplicarGaussian(Mat, int)`: Aplica um filtro de desfoque Gaussiano.
-  - `converterCanalCores(Mat, CanalCor)`: Converte a imagem para outros espaços de cor (HSV, GRAYSCALE, etc.).
-  - `binarizar(Mat, Thresh, ...)`: Converte uma imagem para preto e branco usando vários métodos (Otsu, Global, Adaptativo).
-  - `binarizarParalelo(Mat, Thresh, ...)`: Versão otimizada que binariza uma única imagem grande em paralelo, "fatiando-a" e processando cada fatia em uma thread.
-  - `isolarCanal(Mat, int)`: Extrai um único canal de uma imagem colorida (ex: o canal Vermelho de uma imagem BGR).
-  - `calcularHistograma(Mat)`: Calcula o histograma de uma imagem em tons de cinza, retornando os dados brutos em um `Mat`.
-  - `segmentarHSV(Mat, Scalar, Scalar, boolean)`: Isola pixels que estão dentro de um intervalo de cor HSV. É a função mais avançada e flexível.
+  - Camada de Controle/API: `Servidor.java` ou Classes de Teste
+    - A porta de entrada do sistema. Recebe os comandos (seja via requisição HTTP ou de um script de teste) e delega o trabalho para as camadas inferiores.
 
 
-*** B. PixelCorreio.java (O Especialista em Arquivos) ***
+3. ESTRATÉGIAS DE PARALELISMO
+------------------------------
+O projeto implementa duas formas complementares de paralelismo:
 
-Classe utilitária stateless responsável EXCLUSIVAMENTE por interagir com o sistema de arquivos.
+* 1. Paralelismo Inter-Imagem (Processamento em Lote):
+  - Gerenciado pelo `PixelMestre`.
+  - Processa MÚLTIPLAS imagens diferentes ao mesmo tempo, uma imagem por thread.
+  - Ideal para acelerar o processamento de grandes volumes de arquivos.
 
-* MÉTODOS PÚBLICOS:
-  - `lerImagem(Path)`: Lê uma imagem de um caminho no disco e a retorna como um `Mat`.
-  - `lerImagemDeRecurso(String)`: Lê uma imagem da pasta `resources` do projeto.
-  - `salvarImagem(Path, Mat)`: Salva um `Mat` em um arquivo no disco.
-  - `listarImagens(Path)`: Retorna uma lista de todos os arquivos de imagem em uma pasta.
-
-
-*** C. PixelMestre.java (O Orquestrador de Tarefas) ***
-
-O cérebro da concorrência. Ele gerencia um pool de threads para executar trabalhos pesados em paralelo.
-
-* MÉTODOS PÚBLICOS:
-  - `PixelMestre()`: Construtor que inicia o pool de threads com base nos núcleos da CPU.
-  - `executarEmLote(String, String, Function)`: Orquestra o processamento de um lote de imagens. Ele usa o `PixelCorreio` para listar os arquivos e distribui o processamento de cada imagem para uma thread do seu pool.
-  - `desligar()`: Encerra o pool de threads de forma segura.
+* 2. Paralelismo Intra-Imagem (Otimização de Operação):
+  - Encapsulado em métodos específicos do `EcliPixel` (ex: `binarizarParalelo`).
+  - Processa UMA ÚNICA imagem grande de forma mais rápida, "fatiando-a" e processando cada fatia em uma thread diferente usando ROIs (Regions of Interest).
+  - É uma ferramenta que o `PixelMestre` pode decidir usar com base em regras de negócio (ex: se a imagem for maior que 2000 pixels de largura).
 
 
-*** D. Servidor.java (A Porta de Entrada - API) ***
+4. GUIA DE TESTES E VALIDAÇÃO
+-----------------------------
+O projeto contém vários arquivos de teste na pasta `src/main/java/` para validar diferentes aspectos do sistema.
 
-Uma classe opcional que expõe a funcionalidade do sistema através de uma API web simples.
+* A. `TesteSequencialDefinitivo.java`
+  - PROPÓSITO: Verificar a CORREÇÃO de todos os algoritmos de forma isolada e sequencial.
+  - O QUE FAZ: Itera sobre todas as imagens da pasta `resources/input` e aplica um pipeline completo de funções (Gaussian, binarizar, converter HSV, isolar canal, calcular/desenhar histograma), salvando cada etapa.
+  - COMO INTERPRETAR: É o nosso teste de "controle de qualidade". Garante que a base do `EcliPixel` é sólida e que os algoritmos produzem o resultado visual esperado.
 
-* MÉTODOS PRINCIPAIS:
-  - `serve(IHTTPSession)`: O roteador principal. Direciona as requisições para os métodos corretos.
-  - `/processar-agora` (síncrono): Recebe UMA imagem, chama `EcliPixel` diretamente, e retorna a imagem processada na hora.
-  - `/iniciar-lote` (assíncrono): Recebe os nomes das pastas, chama o `PixelMestre` para iniciar um trabalho em segundo plano, e retorna uma resposta "202 Accepted" imediatamente.
+* B. `TesteIsolarCanal.java`
+  - PROPÓSITO: Testar especificamente a função `isolarCanal` em todos os três canais BGR.
+  - O QUE FAZ: Para cada imagem colorida, extrai e salva os canais Azul (1), Verde (2) e Vermelho (3) como imagens separadas em tons de cinza.
+  - COMO INTERPRETAR: Permite a validação visual da separação de canais.
+
+* C. `TesteSegmentacaoAvancado.java`
+  - PROPÓSITO: Validar a função de segmentação por cor `segmentarHSV`, a mais complexa do `EcliPixel`.
+  - O QUE FAZ: Testa vários intervalos de cor (diferentes tons de azul, verde e vermelho) em múltiplas imagens, salvando tanto a máscara binária quanto o recorte colorido.
+  - COMO INTERPRETAR: Demonstra a flexibilidade e a robustez do algoritmo de segmentação em diferentes cenários.
+
+* D. `TesteParalelo.java` e `TesteParaleloBinarizacao.java`
+  - PROPÓSITO: Testar e validar a PERFORMANCE do processamento em lote gerenciado pelo `PixelMestre`.
+  - O QUE FAZEM: Executam um ou mais pipelines de processamento em todas as imagens de entrada, mas distribuindo o trabalho entre múltiplas threads.
+  - COMO INTERPRETAR: A saída do console mostrará as threads trabalhando de forma intercalada, provando o paralelismo. O tempo de execução de um lote paralelo deve ser significativamente menor que o tempo de um teste sequencial equivalente.
+
+* E. `TesteSupremo.java` (O Benchmark)
+  - PROPÓSITO: Medir, comparar e demonstrar o ganho de velocidade (speedup) do paralelismo.
+  - O QUE FAZ: Primeiro, executa um pipeline complexo de forma sequencial para estabelecer um tempo base (baseline). Depois, executa o mesmo pipeline em paralelo com diferentes contagens de threads (1, 2, 4, 8...).
+  - COMO INTERPRETAR: O relatório final no console mostra uma tabela comparando os tempos e calculando quantas vezes o processamento paralelo foi mais rápido. É a prova final do valor da nossa arquitetura concorrente.
 
 
-4. ESTRUTURA DE PASTAS
-------------------------
-O projeto segue a estrutura padrão do Maven:
-- `src/main/java/`: Contém todo o código-fonte Java.
-- `src/main/resources/input/`: Pasta para colocar as imagens de entrada para os testes.
-- `output/`: Pasta na raiz do projeto onde os resultados dos testes são salvos.
+5. COMO COMPILAR E EXECUTAR
+---------------------------
 
+* REQUISITOS: JDK 17 (ou superior) e Apache Maven.
+
+* COMPILAR O PROJETO:
+  No terminal, na raiz do projeto, execute:
+  `mvn clean install`
+
+* EXECUTAR OS TESTES:
+  Você pode executar qualquer uma das classes de Teste (ex: `TesteSupremo.java`) diretamente pela sua IDE (clicando com o botão direito -> "Run"). Elas lerão as imagens da pasta `src/main/resources/input` e salvarão os resultados em pastas dentro de `output/`.
+
+* EXECUTAR O SERVIDOR WEB:
+  Execute o método `main` da classe `Servidor.java` pela sua IDE. O console mostrará a mensagem "Servidor rodando!".
