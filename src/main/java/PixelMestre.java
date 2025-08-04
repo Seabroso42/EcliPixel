@@ -1,4 +1,3 @@
-import enums.Thresh;
 import org.bytedeco.opencv.opencv_core.Mat;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -17,6 +16,12 @@ public class PixelMestre {
         System.out.println("PixelMestre iniciado com " + numThreads + " threads.");
     }
 
+    /**
+     * Executa um pipeline de processamento em um lote de imagens.
+     * @param pastaEntrada O caminho para a pasta de imagens de entrada.
+     * @param pastaSaida O caminho para a pasta onde os resultados serão salvos.
+     * @param pipelineDeProcessamento Uma função que define a sequência de operações a serem aplicadas em cada imagem.
+     */
     public void executarEmLote(String pastaEntrada, String pastaSaida, Function<Mat, Mat> pipelineDeProcessamento) {
         long startTime = System.currentTimeMillis();
         List<Path> caminhosDasImagens = PixelCorreio.listarImagens(Paths.get(pastaEntrada));
@@ -26,14 +31,20 @@ public class PixelMestre {
 
         for (Path caminhoDaImagem : caminhosDasImagens) {
             Callable<Void> tarefa = () -> {
+                String threadName = Thread.currentThread().getName();
                 try {
+                    System.out.println("[" + threadName + "] Iniciando processamento de: " + caminhoDaImagem.getFileName());
+
                     Mat imagem = PixelCorreio.lerImagem(caminhoDaImagem);
                     Mat imagemProcessada = pipelineDeProcessamento.apply(imagem);
+
                     String nomeSaida = "processado_" + caminhoDaImagem.getFileName().toString();
                     Path caminhoFinal = Paths.get(pastaSaida).resolve(nomeSaida);
                     PixelCorreio.salvarImagem(caminhoFinal, imagemProcessada);
+
+                    System.out.println("[" + threadName + "] Finalizou: " + caminhoDaImagem.getFileName());
                 } catch (Exception e) {
-                    System.err.println("Erro ao processar " + caminhoDaImagem.getFileName() + ": " + e.getMessage());
+                    System.err.println("[" + threadName + "] Erro ao processar " + caminhoDaImagem.getFileName() + ": " + e.getMessage());
                 }
                 return null;
             };
@@ -49,7 +60,8 @@ public class PixelMestre {
         }
 
         long endTime = System.currentTimeMillis();
-        System.out.println("Processamento em lote concluído em " + (endTime - startTime) / 1000.0 + " segundos.");
+        System.out.println("\nProcessamento em lote concluído em " + (endTime - startTime) / 1000.0 + " segundos.");
+        desligar();
     }
 
     public void desligar() {
