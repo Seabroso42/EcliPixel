@@ -1,8 +1,4 @@
-# Photo-Py - Uma solução de manipulação de imagens usando programação concorrente
-
-<p text-align:"center">
-  <img width="390" height="380" alt="logo" src="https://github.com/user-attachments/assets/a64c47e7-d788-4a44-ade1-2c4d7ea22096"/>
-</p>
+# EcliPixel - Uma solução de manipulação de imagens usando programação concorrente
 
 ## Como executar o programa
 
