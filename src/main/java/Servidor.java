@@ -54,7 +54,8 @@ public class Servidor extends NanoHTTPD {
         session.parseBody(files);
         String tempFilePathStr = files.get("imagem");
         if (tempFilePathStr == null) {
-            return newFixedLengthResponse(Response.Status.BAD_REQUEST, "text/plain", "Campo 'imagem' não encontrado.");
+            return newFixedLengthResponse(Response.Status.BAD_REQUEST, "text/plain",
+            "Campo 'imagem' não encontrado Parâmetros: " + session.getParms() + " Arquivos recebidos: " + files);
         }
 
         Path tempPath = Paths.get(tempFilePathStr);
@@ -64,8 +65,12 @@ public class Servidor extends NanoHTTPD {
             byte[] buffer = new byte[(int) (imagemProcessada.total() * imagemProcessada.channels() * 2)];
             imencode(".png", imagemProcessada, buffer);
             return newChunkedResponse(Response.Status.OK, "image/png", new ByteArrayInputStream(buffer));
-        } finally {
-            Files.deleteIfExists(tempPath);
+        } finally {          
+            try {
+                Files.deleteIfExists(tempPath);
+            } catch (IOException e) {
+                 e.printStackTrace();
+            }
         }
     }
 
@@ -108,7 +113,11 @@ public class Servidor extends NanoHTTPD {
             }
             return newFixedLengthResponse(Response.Status.OK, "text/csv", csv.toString());
         } finally {
-            Files.deleteIfExists(tempPath);
+            try {
+                Files.deleteIfExists(tempPath);
+            } catch (IOException e) {
+                 e.printStackTrace();
+            }
         }
     }
 

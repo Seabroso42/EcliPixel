@@ -4,7 +4,10 @@ import numpy as np
 import cv2
 import io
 from PIL import Image
-
+from io import BytesIO
+import requests
+import pandas as pd
+from io import StringIO
 
 st.markdown(
     """
@@ -146,58 +149,78 @@ with left_col:
 
         if uploaded_file is not None:
             col_um, col_dois = st.columns([1, 1])
-            with col_um:
 
+            with col_um:
                 st.title("Binarização da imagem")
-                ###A partir daqui, substituir por implementação em java
+            if st.button("Binarizar"):
+                files = {"imagem": (uploaded_file.name, uploaded_file.getvalue(), uploaded_file.type)}
+                response = requests.post("http://localhost:8080/processar-agora", files=files)
+                if response.status_code == 200:
+                    img = Image.open(BytesIO(response.content))
+                    st.image(img, caption="Imagem binarizada")
+                    st.download_button("Baixar imagem", data=response.content, file_name="binarizada.png", mime="image/png")
+                else:
+                    st.error("Erro na binarização")
+
+            with col_dois:
+                if st.button("Ver histograma"):
+                    files = {"imagem": (uploaded_file.name, uploaded_file.getvalue(), uploaded_file.type)}
+                    response = requests.post("http://localhost:8080/histograma-dados", files=files)
+                    if response.status_code == 200:
+                        csv_data = response.text
+                        df = pd.read_csv(StringIO(csv_data))
+                        st.bar_chart(df.set_index("nivel"))
+                        st.download_button("Baixar CSV", data=csv_data, file_name="histograma.csv", mime="text/csv")
+                    else:
+                        st.error("Erro ao obter histograma")
+
+
+            if st.checkbox("Usar binarização local (teste)"):
                 def binarize_image(uploaded_file):
-                    # Read image from uploaded file
-                    image = Image.open(uploaded_file).convert("L")  # Convert to grayscale
+                    image = Image.open(uploaded_file).convert("L") 
                     arr = np.array(image)
-                    # Simple thresholding
                     _, binary = cv2.threshold(arr, 127, 255, cv2.THRESH_BINARY)
-                    # Convert back to PIL Image
                     bin_img = Image.fromarray(binary)
                     return bin_img
                 
                 bin_img = binarize_image(uploaded_file)
-                # Show binarized image
-                st.image(bin_img, caption="Imagem Binarizada")
+                
+                with col_dois:
+                    st.image(bin_img, caption="Imagem Binarizada")
 
-                # Prepare image for download
-                buf = io.BytesIO()
-                bin_img.save(buf, format="PNG")
-                byte_im = buf.getvalue()
-                st.download_button(
-                    label="Baixar imagem binarizada",
-                    data=byte_im,
-                    file_name="binarizada.png",
-                    mime="image/png"
-                )
-            with col_dois:
-                st.title("Histograma da imagem")
-                def plot_histogram(image_pil):
-                    arr = np.array(image_pil)
-                    hist = cv2.calcHist([arr], [0], None, [256], [0,256])
-                    hist_img = np.full((200, 256, 3), 255, dtype=np.uint8)
-                    cv2.normalize(hist, hist, 0, 200, cv2.NORM_MINMAX)
-                    for x, y in enumerate(hist):
-                        cv2.line(hist_img, (x, 200), (x, 200-int(y)), (0,0,0), 1)
-                    hist_img = cv2.cvtColor(hist_img, cv2.COLOR_BGR2RGB)
-                    return Image.fromarray(hist_img)
+                    buf = io.BytesIO()
+                    bin_img.save(buf, format="PNG")
+                    byte_im = buf.getvalue()
+                    st.download_button(
+                        label="Baixar imagem binarizada",
+                        data=byte_im,
+                        file_name="binarizada.png",
+                        mime="image/png"
+                    )
 
-                hist_img = plot_histogram(Image.open(uploaded_file))
-                st.image(hist_img, caption="Histograma da Imagem Binarizada")
+                    st.title("Histograma da imagem")
+                    def plot_histogram(image_pil):
+                        arr = np.array(image_pil)
+                        hist = cv2.calcHist([arr], [0], None, [256], [0,256])
+                        hist_img = np.full((200, 256, 3), 255, dtype=np.uint8)
+                        cv2.normalize(hist, hist, 0, 200, cv2.NORM_MINMAX)
+                        for x, y in enumerate(hist):
+                            cv2.line(hist_img, (x, 200), (x, 200-int(y)), (0,0,0), 1)
+                        hist_img = cv2.cvtColor(hist_img, cv2.COLOR_BGR2RGB)
+                        return Image.fromarray(hist_img)
 
-                buf_hist = io.BytesIO()
-                hist_img.save(buf_hist, format="PNG")
-                byte_hist = buf_hist.getvalue()
-                st.download_button(
-                    label="Baixar histograma",
-                    data=byte_hist,
-                    file_name="histograma.png",
-                    mime="image/png"
-                )
+                    hist_img = plot_histogram(Image.open(uploaded_file))
+                    st.image(hist_img, caption="Histograma da Imagem Binarizada")
+
+                    buf_hist = io.BytesIO()
+                    hist_img.save(buf_hist, format="PNG")
+                    byte_hist = buf_hist.getvalue()
+                    st.download_button(
+                        label="Baixar histograma",
+                        data=byte_hist,
+                        file_name="histograma.png",
+                        mime="image/png"
+                    )
 
 
        
