@@ -56,7 +56,6 @@ public class PixelMestre {
 
         long endTime = System.currentTimeMillis();
         System.out.println("\nProcessamento em lote concluído em " + (endTime - startTime) / 1000.0 + " segundos.");
-        desligar();
     }
 
     public void desligar() {
