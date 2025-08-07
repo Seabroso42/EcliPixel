@@ -1,18 +1,24 @@
 import enums.CanalCor;
 import enums.Thresh;
-
 import org.bytedeco.javacpp.indexer.FloatIndexer;
 import org.bytedeco.javacpp.indexer.UByteIndexer;
 import org.bytedeco.opencv.opencv_core.Mat;
 import org.bytedeco.opencv.opencv_core.MatVector;
 import org.bytedeco.opencv.opencv_core.Rect;
+import org.bytedeco.opencv.opencv_core.Scalar;
 import org.bytedeco.opencv.opencv_core.Size;
+
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+
 import static enums.Thresh.GLOBAL;
 import static enums.Thresh.LOCAL_MEDIA;
+
+// --- SEÇÃO DE IMPORTS CORRIGIDA E OTIMIZADA ---
+// Importa todas as constantes e funções principais (split, bitwise_and, CV_8UC1, etc.)
 import static org.bytedeco.opencv.global.opencv_core.*;
+// Importa todas as funções de processamento (cvtColor, GaussianBlur, threshold, inRange, etc.)
 import static org.bytedeco.opencv.global.opencv_imgproc.*;
 
 /**
@@ -22,21 +28,6 @@ public final class EcliPixel {
 
     private EcliPixel() {}
 
-    public static Mat isolarCanal(Mat imagemEntrada, int canalEscolhido) {
-        if (imagemEntrada.empty() || imagemEntrada.channels() < 3) {
-            throw new IllegalArgumentException("A imagem de entrada deve ser colorida (3 canais) para isolar um canal.");
-        }
-        if (canalEscolhido < 1 || canalEscolhido > 3) {
-            throw new IllegalArgumentException("O canal escolhido deve ser 1, 2 ou 3.");
-        }
-        MatVector canais = new MatVector();
-        split(imagemEntrada, canais);
-
-        // Retorna uma cópia para evitar problemas de referência com o MatVector
-        Mat canalIsolado = new Mat(canais.get(canalEscolhido - 1));
-        canais.close(); // Libera o vetor de matrizes
-        return canalIsolado;
-    }
     public static Mat aplicarGaussian(Mat imagemEntrada, int kernelSize) {
         if (imagemEntrada.empty() || kernelSize <= 0 || kernelSize % 2 == 0) {
             throw new IllegalArgumentException("Imagem de entrada não pode ser vazia e o kernel deve ser um inteiro ímpar positivo.");
@@ -79,6 +70,10 @@ public final class EcliPixel {
             }
             default -> throw new UnsupportedOperationException("Tipo de binarização não implementado: " + metodo);
         }
+
+        if (imagemCinza != imagemEntrada) {
+            imagemCinza.close();
+        }
         return imagemBinaria;
     }
 
@@ -102,6 +97,7 @@ public final class EcliPixel {
             Runnable tarefa = () -> {
                 Mat resultadoFatia = binarizar(fatiaEntrada, metodo, binparams);
                 resultadoFatia.copyTo(fatiaSaida);
+                resultadoFatia.close();
             };
             executor.submit(tarefa);
         }
@@ -115,7 +111,24 @@ public final class EcliPixel {
             executor.shutdownNow();
             Thread.currentThread().interrupt();
         }
+
+        if (imagemCinza != imagemEntrada) {
+            imagemCinza.close();
+        }
         return imagemBinarizada;
+    }
+
+    public static Mat isolarCanal(Mat imagemEntrada, int canalEscolhido) {
+        if (imagemEntrada.empty() || imagemEntrada.channels() < 3) {
+            throw new IllegalArgumentException("A imagem de entrada deve ser colorida (3 canais) para isolar um canal.");
+        }
+        if (canalEscolhido < 1 || canalEscolhido > 3) {
+            throw new IllegalArgumentException("O canal escolhido deve ser 1, 2 ou 3.");
+        }
+        try (MatVector canais = new MatVector()) {
+            split(imagemEntrada, canais);
+            return new Mat(canais.get(canalEscolhido - 1));
+        }
     }
 
     public static Mat calcularHistograma(Mat imagemEntrada) {
@@ -124,23 +137,19 @@ public final class EcliPixel {
         }
 
         Mat imagemCinza = new Mat();
-        imagemEntrada.convertTo(imagemCinza, CV_8UC1); // Garante que a imagem seja 8-bit e 1 canal
+        imagemEntrada.convertTo(imagemCinza, CV_8UC1);
 
-        // Cria um array Java para guardar as contagens de pixels
         int[] histValues = new int[256];
 
-        // Usa um Indexer para acesso rápido e seguro aos pixels
         try (UByteIndexer indexer = imagemCinza.createIndexer()) {
             for (int y = 0; y < indexer.height(); y++) {
                 for (int x = 0; x < indexer.width(); x++) {
-                    // Pega o valor do pixel (0-255) e incrementa o contador correspondente
                     int pixelValue = indexer.get(y, x);
                     histValues[pixelValue]++;
                 }
             }
         }
 
-        // Cria a Mat de saída e a preenche com os valores calculados
         Mat histograma = new Mat(256, 1, CV_32F);
         try (FloatIndexer histIndexer = histograma.createIndexer()) {
             for (int i = 0; i < 256; i++) {
@@ -152,4 +161,55 @@ public final class EcliPixel {
         return histograma;
     }
 
+    public static Mat segmentarHSV(Mat imagemEntrada, Scalar limiarInferior, Scalar limiarSuperior, boolean binary) {
+        if (imagemEntrada.empty() || imagemEntrada.channels() != 3) {
+            throw new IllegalArgumentException("A imagem de entrada deve ser colorida (3 canais).");
+        }
+
+        try (
+                Mat imagemHSV = new Mat();
+                Mat mascara = new Mat()
+        ) {
+            cvtColor(imagemEntrada, imagemHSV, COLOR_BGR2HSV);
+
+            double hInferior = limiarInferior.get(0);
+            double hSuperior = limiarSuperior.get(0);
+
+            // Lida com o caso do Matiz (Hue) "circular", como o vermelho
+            if (hInferior > hSuperior) {
+                // Para o caso circular, precisamos de 2 máscaras e 4 matrizes de limite
+                try (
+                        Mat mascara1 = new Mat();
+                        Mat mascara2 = new Mat();
+                        // Limites para a primeira faixa (ex: 160 a 179)
+                        Mat limiteInf1 = new Mat(new Scalar(hInferior, limiarInferior.get(1), limiarInferior.get(2), 0));
+                        Mat limiteSup1 = new Mat(new Scalar(179.0, limiarSuperior.get(1), limiarSuperior.get(2), 0));
+                        // Limites para a segunda faixa (ex: 0 a 10)
+                        Mat limiteInf2 = new Mat(new Scalar(0.0, limiarInferior.get(1), limiarInferior.get(2), 0));
+                        Mat limiteSup2 = new Mat(new Scalar(hSuperior, limiarSuperior.get(1), limiarSuperior.get(2), 0))
+                ) {
+                    inRange(imagemHSV, limiteInf1, limiteSup1, mascara1);
+                    inRange(imagemHSV, limiteInf2, limiteSup2, mascara2);
+                    bitwise_or(mascara1, mascara2, mascara); // Combina as duas máscaras
+                }
+            } else {
+                // Caso normal, com um único intervalo
+                try (
+                        Mat matInferior = new Mat(limiarInferior);
+                        Mat matSuperior = new Mat(limiarSuperior)
+                ) {
+                    inRange(imagemHSV, matInferior, matSuperior, mascara);
+                }
+            }
+
+            if (binary) {
+                return mascara.clone(); // Retorna uma cópia da máscara P/B
+            } else {
+                try (Mat resultadoRecortado = new Mat()) {
+                    bitwise_and(imagemEntrada, imagemEntrada, resultadoRecortado, mascara);
+                    return resultadoRecortado.clone(); // Retorna uma cópia do recorte colorido
+                }
+            }
+        }
+    }
 }

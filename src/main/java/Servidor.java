@@ -9,6 +9,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import static org.bytedeco.opencv.global.opencv_imgcodecs.imencode;
 
@@ -79,18 +80,32 @@ public class Servidor extends NanoHTTPD {
         String pastaEntrada = params.get("entrada");
         String pastaSaida = params.get("saida");
         if (pastaEntrada == null || pastaSaida == null) {
-            return newFixedLengthResponse(Response.Status.BAD_REQUEST, "text/plain", "Parâmetros 'entrada' e 'saida' são obrigatórios.");
+            // ... (tratamento de erro) ...
         }
 
-        Function<Mat, Mat> pipelineOtimizado = (imagem) -> {
+        // AÇÃO COMPLETA: Define o que fazer para cada imagem no lote do servidor.
+        Consumer<Path> acaoDoServidor = (caminhoDaImagem) -> {
+            Mat imagem = PixelCorreio.lerImagem(caminhoDaImagem);
+
+            Mat imagemProcessada;
             if (imagem.cols() > 2000) {
-                return EcliPixel.binarizarParalelo(imagem, Thresh.OTSU);
+                imagemProcessada = EcliPixel.binarizarParalelo(imagem, Thresh.OTSU);
             } else {
-                return EcliPixel.binarizar(imagem, Thresh.OTSU);
+                imagemProcessada = EcliPixel.binarizar(imagem, Thresh.OTSU);
             }
+
+            String nomeSaida = "resultado_lote_" + caminhoDaImagem.getFileName().toString();
+            Path caminhoFinal = Paths.get(pastaSaida).resolve(nomeSaida);
+            PixelCorreio.salvarImagem(caminhoFinal, imagemProcessada);
+
+            imagem.close();
+            imagemProcessada.close();
         };
 
-        new Thread(() -> mestre.executarEmLote(pastaEntrada, pastaSaida, pipelineOtimizado)).start();
+        // Usa uma nova thread para chamar o mestre, para não bloquear a requisição.
+        new Thread(() -> {
+            mestre.executarEmLote(pastaEntrada, acaoDoServidor);
+        }).start();
 
         String mensagem = "Processamento em lote iniciado. Entrada: " + pastaEntrada + ", Saída: " + pastaSaida;
         return newFixedLengthResponse(Response.Status.ACCEPTED, "text/plain", mensagem);
