@@ -1,15 +1,17 @@
-# EcliPixel - Uma solução de manipulação de imagens usando programação concorrente
+==================================================
+ PROJETO ECLIPixel - DOCUMENTAÇÃO TÉCNICA FINAL
+==================================================
+Última Atualização: 4 de Agosto de 2025
+
 
 1. VISÃO GERAL DO PROJETO
 --------------------------
-O EcliPixel é um backend de processamento de imagem de alta performance, escrito em Java.
-Ele utiliza a biblioteca JavaCV (um wrapper para OpenCV) para executar algoritmos de visão computacional de forma rápida e eficiente.
+O EcliPixel é um backend de processamento de imagem de alta performance, escrito em Java. Ele utiliza a biblioteca JavaCV (um wrapper para a poderosa OpenCV) para executar algoritmos de visão computacional de forma rápida e eficiente.
 
 O sistema foi projetado com foco em performance e processamento paralelo, utilizando uma arquitetura em camadas que promove a separação de responsabilidades, facilitando a manutenção e a expansão.
 
 O projeto pode ser utilizado através de scripts de teste para processamento em lote ou como um servidor web que expõe sua funcionalidade através de uma API HTTP.
 
-No vídeo do insomnia, nos testamos todas as rotas. O binarizar síncrono, o async que utiliza threads para binarizar toda a pasta e devolve em outra pasta de saída e a criação do histograma. Já no vídeo da interface, o botão inarizar e ver histograma que aparecem estão pegando já dessas endpoints. Eu mostrei um No vídeo do insomnia, nos testamos todas as rotas. O binarizar síncrono, o async que utiliza threads para binarizar toda a pasta e devolve em outra pasta de saída e a criação do histograma. Já no vídeo da interface, o botão inarizar e ver histograma que aparecem estão pegando já dessas endpoints. Eu mostrei um checkbox que tem escrito binarização local (teste) que era a binarização e histograma teste de python que foi mostrado na segunda. Mas a binarização manual nos botões depois o histograma já são gerados pelo código em Java.checkbox que tem escrito binarização local (teste) que era a binarização e histograma teste de python que foi mostrado na segunda. Mas a binarização manual nos botões depois o histograma já são gerados pelo código em Java.
 
 2. ARQUITETURA
 ----------------
@@ -82,22 +84,12 @@ O projeto contém vários arquivos de teste na pasta `src/main/java/` para valid
 
 * REQUISITOS: JDK 17 (ou superior) e Apache Maven.
 
+* COMPILAR O PROJETO:
+  No terminal, na raiz do projeto, execute:
+  `mvn clean install`
+
 * EXECUTAR OS TESTES:
   Você pode executar qualquer uma das classes de Teste (ex: `TesteSupremo.java`) diretamente pela sua IDE (clicando com o botão direito -> "Run"). Elas lerão as imagens da pasta `src/main/resources/input` e salvarão os resultados em pastas dentro de `output/`.
 
-## Como executar o programa
-
-1 - Clone o repositório
-
-```git clone https://github.com/Seabroso42/EcliPixel.git```
-
-2 - Instale os requisitos
-```
-cd gui
-pip install -r  requirements.txt
-```
-
-3 - Execute a aplicação
-```
-streamlit run app.py
-```
+* EXECUTAR O SERVIDOR WEB:
+  Execute o método `main` da classe `Servidor.java` pela sua IDE. O console mostrará a mensagem "Servidor rodando!".

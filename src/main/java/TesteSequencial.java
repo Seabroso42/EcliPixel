@@ -15,12 +15,12 @@ import static org.bytedeco.opencv.global.opencv_imgproc.line;
  * Classe de teste definitiva para validar as funcionalidades da EcliPixel de forma sequencial,
  * com medição de tempo de execução para cada imagem e para o total.
  */
-public class TesteSequencialDefinitivo {
+public class TesteSequencial {
 
     public static void main(String[] args) {
         System.out.println("--- INICIANDO TESTE SEQUENCIAL DEFINITIVO DAS FUNÇÕES EcliPixel ---");
 
-        String pastaSaida = "output/teste_sequencial_definitivo";
+        String pastaSaida = "output/teste_sequencial";
         List<Path> caminhosDasImagens = PixelCorreio.listarImagens(Paths.get("src/main/resources/input"));
 
         if (caminhosDasImagens.isEmpty()) {
